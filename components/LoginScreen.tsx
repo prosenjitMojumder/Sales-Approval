@@ -38,7 +38,7 @@ const LoginScreen: React.FC<Props> = ({ onLogin }) => {
         <div className="bg-slate-900 p-8 text-center">
             <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-400">
                 <i className="fas fa-layer-group mr-2 text-blue-400"></i>
-                FlowTrack
+                Rate Tracker
             </h1>
             <p className="text-slate-400 mt-2 text-sm">Secure Sales Approval System</p>
         </div>

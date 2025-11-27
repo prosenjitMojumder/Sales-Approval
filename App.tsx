@@ -307,7 +307,7 @@ const App: React.FC = () => {
         <div className="p-6 border-b border-slate-800">
             <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-400">
                 <i className="fas fa-layer-group mr-2 text-blue-400"></i>
-                FlowTrack
+                Rate Tracker
             </h1>
             <p className="text-xs text-slate-400 mt-1">AI-Powered Approvals</p>
         </div>

@@ -1,10 +1,10 @@
-# FlowTrack AI
+# Rate Tracker
 
 A multi-level sales approval tracking system powered by Gemini for intelligent deal risk assessment and automated workflow management.
 
 ## Features
 
-- **Multi-Level Approvals**: Automated workflow from Salesperson -> Regional Manager (L1) -> VP of Sales (L2).
+- **Multi-Level Approvals**: Automated workflow from Salesperson -> Regional Manager (L1) -> VP of Sales (L2) -> Global Director (L3).
 - **AI Risk Analysis**: Integrates with Google Gemini to analyze deal risk based on weight, destination, price, and territory.
 - **Role-Based Access**: Secure login for Admins, Salespeople, and Managers with specific dashboards for each role.
 - **HAWB Submission**: Post-approval workflow for submitting House Air Waybill details.
@@ -49,5 +49,6 @@ The app comes seeded with the following default users (password for all is `pass
 - **Sales**: `john`
 - **Manager (L1)**: `sarah`
 - **VP (L2)**: `mike`
+- **Director (L3)**: `david`
 
 You can manage these users via the Admin Panel.
