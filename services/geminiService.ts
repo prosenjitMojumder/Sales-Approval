@@ -1,6 +1,9 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AIAnalysis } from "../types";
 
+// Polyfill type definition for process to avoid TS build errors in browser environment
+declare const process: any;
+
 export const analyzeDeal = async (
   icirs: string,
   customer: string,
