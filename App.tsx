@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Role, 
@@ -12,11 +11,11 @@ import * as StorageService from './services/storageService';
 import * as GeminiService from './services/geminiService';
 import RequestCard from './components/RequestCard';
 import AdminPanel from './components/AdminPanel';
+import LoginScreen from './components/LoginScreen';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 
 const App: React.FC = () => {
   const [activeUser, setActiveUser] = useState<User | null>(null);
-  const [users, setUsers] = useState<User[]>([]);
   const [roleLabels, setRoleLabels] = useState<RoleLabels | null>(null);
   const [view, setView] = useState<'dashboard' | 'admin'>('dashboard');
   
@@ -39,17 +38,12 @@ const App: React.FC = () => {
   // Initialize Data
   useEffect(() => {
     refreshMetadata();
-    const loadedUsers = StorageService.getUsers();
-    setUsers(loadedUsers);
-    if (loadedUsers.length > 0) {
-        // Default to the first user (usually Admin)
-        setActiveUser(loadedUsers[0]);
-    }
+    // Ensure default users exist if first run
+    StorageService.getUsers();
   }, []);
 
   const refreshMetadata = () => {
       setRoleLabels(StorageService.getRoleLabels());
-      setUsers(StorageService.getUsers());
   };
 
   // Stats calculation
@@ -95,6 +89,17 @@ const App: React.FC = () => {
   const showToast = (message: string, type: 'success' | 'info' = 'success') => {
     setNotification({ message, type });
     setTimeout(() => setNotification(null), 3000);
+  };
+
+  const handleLogin = (user: User) => {
+      setActiveUser(user);
+      refreshMetadata(); // Ensure roles are fresh on login
+  };
+
+  const handleLogout = () => {
+      setActiveUser(null);
+      setView('dashboard');
+      setRequests([]);
   };
 
   const handleCreateRequest = async (e: React.FormEvent) => {
@@ -234,14 +239,6 @@ const App: React.FC = () => {
     showToast("Data exported to Excel (CSV) successfully!");
   };
 
-  const handleUserSwitch = (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const userId = e.target.value;
-      const user = users.find(u => u.id === userId);
-      if (user) setActiveUser(user);
-      // Refresh list
-      refreshMetadata();
-  };
-
   // Filter requests for the current view
   const visibleRequests = useMemo(() => {
     if (!activeUser) return [];
@@ -266,7 +263,12 @@ const App: React.FC = () => {
     });
   }, [requests, activeUser]);
 
-  if (!activeUser || !roleLabels) return <div className="flex h-screen items-center justify-center">Loading...</div>;
+  // --- RENDER ---
+
+  // Show Login Screen if not authenticated
+  if (!activeUser || !roleLabels) {
+      return <LoginScreen onLogin={handleLogin} />;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
@@ -290,17 +292,15 @@ const App: React.FC = () => {
         </div>
         
         <div className="p-6 flex-1">
-            <div className="mb-8">
-                <label className="text-xs uppercase text-slate-500 font-semibold tracking-wider mb-2 block">Switch User</label>
-                <select 
-                    value={activeUser.id}
-                    onChange={handleUserSwitch}
-                    className="w-full bg-slate-800 border-none rounded-md text-sm text-white px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
-                >
-                    {users.map(user => (
-                        <option key={user.id} value={user.id}>{user.name} ({roleLabels[user.role]})</option>
-                    ))}
-                </select>
+            {/* User Profile Summary */}
+            <div className="mb-8 flex items-center gap-3 bg-slate-800 p-3 rounded-lg">
+                <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center font-bold text-sm">
+                    {activeUser.name.charAt(0)}
+                </div>
+                <div className="overflow-hidden">
+                    <div className="text-sm font-medium truncate">{activeUser.name}</div>
+                    <div className="text-xs text-slate-400 truncate">{roleLabels[activeUser.role]}</div>
+                </div>
             </div>
 
             <nav className="space-y-2">
@@ -324,8 +324,14 @@ const App: React.FC = () => {
             </nav>
         </div>
         
-        <div className="p-6 border-t border-slate-800">
-            <button onClick={handleReset} className="text-xs text-slate-500 hover:text-red-400 flex items-center gap-2">
+        <div className="p-6 border-t border-slate-800 space-y-4">
+             <button 
+                onClick={handleLogout} 
+                className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2"
+            >
+                <i className="fas fa-sign-out-alt"></i> Log Out
+            </button>
+            <button onClick={handleReset} className="text-xs text-slate-500 hover:text-red-400 flex items-center gap-2 justify-center w-full">
                 <i className="fas fa-trash"></i> Reset Demo Data
             </button>
         </div>
@@ -339,7 +345,7 @@ const App: React.FC = () => {
                     {view === 'admin' ? 'Administration' : (activeUser.role === Role.SALESPERSON ? 'My Dashboard' : 'Approval Queue')}
                 </h2>
                 <p className="text-gray-500 text-sm mt-1">
-                    Logged in as <span className="font-semibold text-gray-700">{activeUser.name}</span> <span className="text-gray-400">({roleLabels[activeUser.role]})</span>
+                    Welcome back, <span className="font-semibold text-gray-700">{activeUser.name}</span>
                 </p>
             </div>
             
