@@ -128,6 +128,7 @@ export const getUsers = (): User[] => {
     { id: '2', name: 'John Sales', username: 'john', password: 'password123', role: Role.SALESPERSON },
     { id: '3', name: 'Sarah Manager', username: 'sarah', password: 'password123', role: Role.APPROVER_L1 },
     { id: '4', name: 'Mike VP', username: 'mike', password: 'password123', role: Role.APPROVER_L2 },
+    { id: '5', name: 'David Director', username: 'david', password: 'password123', role: Role.APPROVER_L3 },
   ];
   saveUsers(defaults);
   return defaults;
@@ -164,6 +165,7 @@ export const getRoleLabels = (): RoleLabels => {
     [Role.SALESPERSON]: 'Salesperson',
     [Role.APPROVER_L1]: 'Regional Manager (L1)',
     [Role.APPROVER_L2]: 'VP of Sales (L2)',
+    [Role.APPROVER_L3]: 'Global Director (L3)',
   };
 };
 

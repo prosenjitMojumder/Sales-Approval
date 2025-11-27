@@ -26,7 +26,8 @@ const RequestCard: React.FC<Props> = ({ request, currentRole, activeUserName, on
   // Determine if the current user can act on this request
   const canAct =
     (currentRole === Role.APPROVER_L1 && request.status === RequestStatus.PENDING_L1) ||
-    (currentRole === Role.APPROVER_L2 && request.status === RequestStatus.PENDING_L2);
+    (currentRole === Role.APPROVER_L2 && request.status === RequestStatus.PENDING_L2) ||
+    (currentRole === Role.APPROVER_L3 && request.status === RequestStatus.PENDING_L3);
 
   const canSubmitHawb = 
     request.status === RequestStatus.APPROVED && 

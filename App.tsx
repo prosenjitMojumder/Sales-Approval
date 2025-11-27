@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Role, 
@@ -73,7 +74,7 @@ const App: React.FC = () => {
         return requests.filter(r => r.createdBy === activeUser.name);
     }
 
-    // Admins and Approvers (L1/L2) have access to the global pool of requests
+    // Admins and Approvers (L1/L2/L3) have access to the global pool of requests
     return requests;
   }, [requests, activeUser]);
 
@@ -160,14 +161,18 @@ const App: React.FC = () => {
     const req = requests.find(r => r.id === id);
     const email = req?.submitterEmail || 'submitter';
 
-    // Get display name for next level
+    // Get display names
     const l2Label = roleLabels ? roleLabels[Role.APPROVER_L2] : "Level 2";
+    const l3Label = roleLabels ? roleLabels[Role.APPROVER_L3] : "Level 3";
 
     let successMsg = `Request finally approved! Automatic email sent to ${email}.`;
 
     if (activeUser.role === Role.APPROVER_L1) {
         nextStatus = RequestStatus.PENDING_L2;
         successMsg = `Approved! Escalated to ${l2Label}.`;
+    } else if (activeUser.role === Role.APPROVER_L2) {
+        nextStatus = RequestStatus.PENDING_L3;
+        successMsg = `Approved! Escalated to ${l3Label}.`;
     }
 
     const updated = StorageService.updateRequestStatus(id, nextStatus, activeUser.role, note);
@@ -283,6 +288,9 @@ const App: React.FC = () => {
     if (activeUser.role === Role.APPROVER_L2) {
         return scopedRequests.filter(r => r.status === RequestStatus.PENDING_L2);
     }
+    if (activeUser.role === Role.APPROVER_L3) {
+        return scopedRequests.filter(r => r.status === RequestStatus.PENDING_L3);
+    }
     return [];
   }, [scopedRequests, activeUser]);
 
@@ -294,7 +302,8 @@ const App: React.FC = () => {
     // For approvers, we show items they likely interacted with or are past their stage
     return scopedRequests.filter(r => {
         if (activeUser.role === Role.APPROVER_L1) return r.status !== RequestStatus.PENDING_L1 && r.status !== RequestStatus.DRAFT;
-        if (activeUser.role === Role.APPROVER_L2) return r.status === RequestStatus.APPROVED || r.status === RequestStatus.REJECTED;
+        if (activeUser.role === Role.APPROVER_L2) return r.status !== RequestStatus.PENDING_L1 && r.status !== RequestStatus.PENDING_L2 && r.status !== RequestStatus.DRAFT;
+        if (activeUser.role === Role.APPROVER_L3) return r.status === RequestStatus.APPROVED || r.status === RequestStatus.REJECTED;
         return false;
     });
   }, [scopedRequests, activeUser]);
@@ -477,7 +486,7 @@ const App: React.FC = () => {
                     )}
 
                     {/* Manager History Section */}
-                    {(activeUser.role === Role.APPROVER_L1 || activeUser.role === Role.APPROVER_L2) && approvalHistory.length > 0 && (
+                    {(activeUser.role === Role.APPROVER_L1 || activeUser.role === Role.APPROVER_L2 || activeUser.role === Role.APPROVER_L3) && approvalHistory.length > 0 && (
                         <>
                         <h3 className="text-lg font-bold text-gray-700 border-l-4 border-gray-300 pl-3 mt-12 opacity-70">
                             Recently Processed

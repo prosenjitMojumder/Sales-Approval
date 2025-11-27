@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { RequestStatus } from '../types';
 
@@ -24,6 +25,10 @@ const StatusBadge: React.FC<Props> = ({ status }) => {
       break;
     case RequestStatus.PENDING_L2:
       colorClass = 'bg-purple-50 text-purple-700 border border-purple-200';
+      icon = 'fa-clock';
+      break;
+    case RequestStatus.PENDING_L3:
+      colorClass = 'bg-orange-50 text-orange-700 border border-orange-200';
       icon = 'fa-clock';
       break;
     default:

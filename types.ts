@@ -4,6 +4,7 @@ export enum Role {
   SALESPERSON = 'Salesperson',
   APPROVER_L1 = 'Regional Manager (L1)',
   APPROVER_L2 = 'VP of Sales (L2)',
+  APPROVER_L3 = 'Global Director (L3)',
 }
 
 export type RoleLabels = Record<Role, string>;
@@ -12,6 +13,7 @@ export enum RequestStatus {
   DRAFT = 'Draft',
   PENDING_L1 = 'Pending L1 Approval',
   PENDING_L2 = 'Pending L2 Approval',
+  PENDING_L3 = 'Pending L3 Approval',
   APPROVED = 'Approved',
   REJECTED = 'Rejected',
 }
