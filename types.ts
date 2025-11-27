@@ -16,6 +16,7 @@ export enum RequestStatus {
   PENDING_L3 = 'Pending L3 Approval',
   APPROVED = 'Approved',
   REJECTED = 'Rejected',
+  COMPLETED = 'Completed',
 }
 
 export interface User {

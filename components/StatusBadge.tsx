@@ -15,6 +15,10 @@ const StatusBadge: React.FC<Props> = ({ status }) => {
       colorClass = 'bg-green-100 text-green-800 border border-green-200';
       icon = 'fa-check-circle';
       break;
+    case RequestStatus.COMPLETED:
+      colorClass = 'bg-gray-800 text-white border border-gray-600';
+      icon = 'fa-flag-checkered';
+      break;
     case RequestStatus.REJECTED:
       colorClass = 'bg-red-100 text-red-800 border border-red-200';
       icon = 'fa-times-circle';

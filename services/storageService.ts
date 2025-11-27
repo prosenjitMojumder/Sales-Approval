@@ -1,5 +1,4 @@
 
-
 import { SalesRequest, RequestStatus, Role, User, RoleLabels, HawbSubmission } from "../types";
 
 const STORAGE_KEY = "flowtrack_requests";
@@ -92,8 +91,16 @@ export const submitHawbDetails = (id: string, hawbNumbers: string, remarks: stri
     };
 
     requests[index].hawbSubmission = submission;
-    // We don't necessarily need to add to history log, but we can update updatedAt
+    requests[index].status = RequestStatus.COMPLETED;
     requests[index].updatedAt = new Date().toISOString();
+    
+    // Log the completion in history
+    requests[index].history.push({
+        action: "Completed",
+        timestamp: new Date().toISOString(),
+        actor: Role.SALESPERSON,
+        note: "HAWB details submitted. Request closed."
+    });
     
     saveRequests(requests);
     return requests[index];

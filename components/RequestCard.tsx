@@ -1,5 +1,4 @@
 
-
 import React, { useState } from 'react';
 import { SalesRequest, Role, RequestStatus, RoleLabels } from '../types';
 import StatusBadge from './StatusBadge';
@@ -29,6 +28,7 @@ const RequestCard: React.FC<Props> = ({ request, currentRole, activeUserName, on
     (currentRole === Role.APPROVER_L2 && request.status === RequestStatus.PENDING_L2) ||
     (currentRole === Role.APPROVER_L3 && request.status === RequestStatus.PENDING_L3);
 
+  // Can submit HAWB if approved AND current user is the creator
   const canSubmitHawb = 
     request.status === RequestStatus.APPROVED && 
     request.createdBy === activeUserName;
@@ -134,8 +134,8 @@ const RequestCard: React.FC<Props> = ({ request, currentRole, activeUserName, on
              </div>
         )}
 
-        {/* HAWB Submission Section - Only visible if Approved */}
-        {request.status === RequestStatus.APPROVED && (
+        {/* HAWB Submission Section - Visible if Approved OR Completed */}
+        {(request.status === RequestStatus.APPROVED || request.status === RequestStatus.COMPLETED) && (
             <div className="mt-5 pt-4 border-t border-dashed border-gray-200">
                 <div className="flex items-center gap-2 mb-3">
                     <i className="fas fa-shipping-fast text-blue-600"></i>
@@ -169,12 +169,12 @@ const RequestCard: React.FC<Props> = ({ request, currentRole, activeUserName, on
                             disabled={isSubmittingHawb}
                             className="w-full bg-blue-600 text-white text-sm font-medium py-2 rounded-md hover:bg-blue-700 transition-colors"
                         >
-                            {request.hawbSubmission ? 'Update HAWB Details' : 'Submit HAWB'}
+                            {request.hawbSubmission ? 'Update HAWB Details' : 'Submit HAWB & Close Request'}
                         </button>
                     </div>
                 ) : (
                     request.hawbSubmission ? (
-                        <div className="bg-green-50 p-4 rounded-lg border border-green-100 text-sm">
+                        <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm">
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <span className="block text-xs text-gray-500">HAWB Numbers</span>
@@ -186,9 +186,14 @@ const RequestCard: React.FC<Props> = ({ request, currentRole, activeUserName, on
                                 </div>
                             </div>
                             {request.hawbSubmission.remarks && (
-                                <div className="mt-2 pt-2 border-t border-green-200">
+                                <div className="mt-2 pt-2 border-t border-gray-200">
                                     <span className="block text-xs text-gray-500">Remarks</span>
                                     <span className="text-gray-800 italic">{request.hawbSubmission.remarks}</span>
+                                </div>
+                            )}
+                             {request.status === RequestStatus.COMPLETED && (
+                                <div className="mt-3 text-center">
+                                    <span className="inline-block px-2 py-1 bg-gray-200 text-gray-700 text-xs rounded font-medium">Request Completed</span>
                                 </div>
                             )}
                         </div>
@@ -227,7 +232,8 @@ const RequestCard: React.FC<Props> = ({ request, currentRole, activeUserName, on
                                     </span>
                                     <span className={`text-xs ${
                                         event.action === 'Rejected' ? 'text-red-600' :
-                                        event.action === 'Approved' ? 'text-green-600' : 'text-gray-500'
+                                        event.action === 'Approved' ? 'text-green-600' : 
+                                        event.action === 'Completed' ? 'text-gray-700' : 'text-gray-500'
                                     }`}>{event.action}</span>
                                     {event.note && <span className="text-gray-600 text-xs italic mt-0.5 bg-gray-50 p-2 rounded block border border-gray-100">"{event.note}"</span>}
                                 </div>

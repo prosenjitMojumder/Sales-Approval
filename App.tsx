@@ -83,7 +83,8 @@ const App: React.FC = () => {
   const stats: DashboardStats = useMemo(() => {
     return scopedRequests.reduce((acc, curr) => {
       acc.totalRequests++;
-      if (curr.status === RequestStatus.APPROVED) {
+      // Count APPROVED and COMPLETED as positive outcomes
+      if (curr.status === RequestStatus.APPROVED || curr.status === RequestStatus.COMPLETED) {
         acc.approved++;
         acc.approvedValue += curr.requestedPrice;
       }
@@ -194,7 +195,7 @@ const App: React.FC = () => {
   const handleHawbSubmit = (id: string, hawb: string, remarks: string) => {
       StorageService.submitHawbDetails(id, hawb, remarks);
       loadRequests();
-      showToast("HAWB details submitted successfully!");
+      showToast("HAWB details submitted and Request Closed!");
   };
 
   const handleReset = () => {
@@ -303,7 +304,7 @@ const App: React.FC = () => {
     return scopedRequests.filter(r => {
         if (activeUser.role === Role.APPROVER_L1) return r.status !== RequestStatus.PENDING_L1 && r.status !== RequestStatus.DRAFT;
         if (activeUser.role === Role.APPROVER_L2) return r.status !== RequestStatus.PENDING_L1 && r.status !== RequestStatus.PENDING_L2 && r.status !== RequestStatus.DRAFT;
-        if (activeUser.role === Role.APPROVER_L3) return r.status === RequestStatus.APPROVED || r.status === RequestStatus.REJECTED;
+        if (activeUser.role === Role.APPROVER_L3) return r.status === RequestStatus.APPROVED || r.status === RequestStatus.REJECTED || r.status === RequestStatus.COMPLETED;
         return false;
     });
   }, [scopedRequests, activeUser]);
