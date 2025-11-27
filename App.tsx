@@ -83,7 +83,7 @@ const App: React.FC = () => {
   const stats: DashboardStats = useMemo(() => {
     return scopedRequests.reduce((acc, curr) => {
       acc.totalRequests++;
-      // Count APPROVED and COMPLETED as positive outcomes
+      // Count APPROVED and COMPLETED as positive outcomes for the dashboard
       if (curr.status === RequestStatus.APPROVED || curr.status === RequestStatus.COMPLETED) {
         acc.approved++;
         acc.approvedValue += curr.requestedPrice;
@@ -168,6 +168,7 @@ const App: React.FC = () => {
 
     let successMsg = `Request finally approved! Automatic email sent to ${email}.`;
 
+    // Routing Logic
     if (activeUser.role === Role.APPROVER_L1) {
         nextStatus = RequestStatus.PENDING_L2;
         successMsg = `Approved! Escalated to ${l2Label}.`;
@@ -175,6 +176,7 @@ const App: React.FC = () => {
         nextStatus = RequestStatus.PENDING_L3;
         successMsg = `Approved! Escalated to ${l3Label}.`;
     }
+    // If L3, nextStatus stays APPROVED
 
     const updated = StorageService.updateRequestStatus(id, nextStatus, activeUser.role, note);
     if (updated) {
@@ -188,14 +190,14 @@ const App: React.FC = () => {
     const updated = StorageService.updateRequestStatus(id, RequestStatus.REJECTED, activeUser.role, reason);
     if (updated) {
         loadRequests();
-        showToast("Request rejected.");
+        showToast("Request rejected and workflow stopped.");
     }
   };
 
   const handleHawbSubmit = (id: string, hawb: string, remarks: string) => {
       StorageService.submitHawbDetails(id, hawb, remarks);
       loadRequests();
-      showToast("HAWB details submitted and Request Closed!");
+      showToast("HAWB details submitted. Request marked as Completed!");
   };
 
   const handleReset = () => {
@@ -302,9 +304,15 @@ const App: React.FC = () => {
     
     // For approvers, we show items they likely interacted with or are past their stage
     return scopedRequests.filter(r => {
-        if (activeUser.role === Role.APPROVER_L1) return r.status !== RequestStatus.PENDING_L1 && r.status !== RequestStatus.DRAFT;
-        if (activeUser.role === Role.APPROVER_L2) return r.status !== RequestStatus.PENDING_L1 && r.status !== RequestStatus.PENDING_L2 && r.status !== RequestStatus.DRAFT;
+        // Simple logic: If I am L1, I want to see anything I touched (L2, L3, Approved, Rejected, Completed)
+        // If I am L3, I see final states.
+        
+        if (r.status === RequestStatus.DRAFT) return false;
+
+        if (activeUser.role === Role.APPROVER_L1) return r.status !== RequestStatus.PENDING_L1;
+        if (activeUser.role === Role.APPROVER_L2) return r.status !== RequestStatus.PENDING_L1 && r.status !== RequestStatus.PENDING_L2;
         if (activeUser.role === Role.APPROVER_L3) return r.status === RequestStatus.APPROVED || r.status === RequestStatus.REJECTED || r.status === RequestStatus.COMPLETED;
+        
         return false;
     });
   }, [scopedRequests, activeUser]);

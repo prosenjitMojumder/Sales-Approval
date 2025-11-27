@@ -23,6 +23,7 @@ const RequestCard: React.FC<Props> = ({ request, currentRole, activeUserName, on
   const [isSubmittingHawb, setIsSubmittingHawb] = useState(false);
 
   // Determine if the current user can act on this request
+  // This logic automatically ensures flow stops if status is REJECTED (as status won't match PENDING_XX)
   const canAct =
     (currentRole === Role.APPROVER_L1 && request.status === RequestStatus.PENDING_L1) ||
     (currentRole === Role.APPROVER_L2 && request.status === RequestStatus.PENDING_L2) ||
@@ -63,8 +64,13 @@ const RequestCard: React.FC<Props> = ({ request, currentRole, activeUserName, on
     return 'text-green-600';
   };
 
+  // Extract rejection details from history if status is REJECTED
+  const rejectionDetails = request.status === RequestStatus.REJECTED 
+    ? request.history.find(h => h.action === 'Rejected') 
+    : null;
+
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow duration-200">
+    <div className={`bg-white rounded-xl shadow-sm border overflow-hidden hover:shadow-md transition-shadow duration-200 ${request.status === RequestStatus.REJECTED ? 'border-red-200' : 'border-gray-200'}`}>
       <div className="p-5">
         <div className="flex justify-between items-start">
           <div className="flex-1">
@@ -134,6 +140,29 @@ const RequestCard: React.FC<Props> = ({ request, currentRole, activeUserName, on
              </div>
         )}
 
+        {/* REJECTION / CLOSED BLOCK */}
+        {request.status === RequestStatus.REJECTED && (
+             <div className="mt-5 bg-red-50 rounded-lg p-4 border border-red-100 animate-in fade-in slide-in-from-bottom-2">
+                <div className="flex items-start gap-3">
+                    <div className="mt-0.5">
+                        <i className="fas fa-ban text-red-500 text-lg"></i>
+                    </div>
+                    <div>
+                        <h4 className="text-sm font-bold text-red-900">Request Closed: Rejected</h4>
+                        <p className="text-sm text-red-800 mt-1">
+                            This request was rejected by <span className="font-semibold">{rejectionDetails ? (roleLabels[rejectionDetails.actor] || rejectionDetails.actor) : 'Approver'}</span>.
+                        </p>
+                        {rejectionDetails?.note && (
+                            <div className="mt-2 bg-white/60 p-2 rounded border border-red-100 text-sm text-red-700 italic">
+                                "{rejectionDetails.note}"
+                            </div>
+                        )}
+                        <p className="text-xs text-red-600 mt-2 font-medium">Workflow has been stopped. No further actions allowed.</p>
+                    </div>
+                </div>
+            </div>
+        )}
+
         {/* HAWB Submission Section - Visible if Approved OR Completed */}
         {(request.status === RequestStatus.APPROVED || request.status === RequestStatus.COMPLETED) && (
             <div className="mt-5 pt-4 border-t border-dashed border-gray-200">
@@ -167,7 +196,7 @@ const RequestCard: React.FC<Props> = ({ request, currentRole, activeUserName, on
                         <button 
                             onClick={handleHawbSubmitClick}
                             disabled={isSubmittingHawb}
-                            className="w-full bg-blue-600 text-white text-sm font-medium py-2 rounded-md hover:bg-blue-700 transition-colors"
+                            className="w-full bg-blue-600 text-white text-sm font-medium py-2 rounded-md hover:bg-blue-700 transition-colors shadow-sm"
                         >
                             {request.hawbSubmission ? 'Update HAWB Details' : 'Submit HAWB & Close Request'}
                         </button>
@@ -177,29 +206,31 @@ const RequestCard: React.FC<Props> = ({ request, currentRole, activeUserName, on
                         <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm">
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <span className="block text-xs text-gray-500">HAWB Numbers</span>
-                                    <span className="font-mono font-medium text-gray-800">{request.hawbSubmission.hawbNumbers}</span>
+                                    <span className="block text-xs text-gray-500 uppercase">HAWB Numbers</span>
+                                    <span className="font-mono font-medium text-gray-800 break-all">{request.hawbSubmission.hawbNumbers}</span>
                                 </div>
                                 <div>
-                                    <span className="block text-xs text-gray-500">Submitted At</span>
+                                    <span className="block text-xs text-gray-500 uppercase">Submitted At</span>
                                     <span className="text-gray-800">{new Date(request.hawbSubmission.submittedAt).toLocaleDateString()}</span>
                                 </div>
                             </div>
                             {request.hawbSubmission.remarks && (
                                 <div className="mt-2 pt-2 border-t border-gray-200">
-                                    <span className="block text-xs text-gray-500">Remarks</span>
-                                    <span className="text-gray-800 italic">{request.hawbSubmission.remarks}</span>
+                                    <span className="block text-xs text-gray-500 uppercase">Remarks</span>
+                                    <span className="text-gray-800 italic">"{request.hawbSubmission.remarks}"</span>
                                 </div>
                             )}
                              {request.status === RequestStatus.COMPLETED && (
-                                <div className="mt-3 text-center">
-                                    <span className="inline-block px-2 py-1 bg-gray-200 text-gray-700 text-xs rounded font-medium">Request Completed</span>
+                                <div className="mt-3 flex justify-center">
+                                    <span className="inline-flex items-center px-3 py-1 bg-gray-800 text-white text-xs rounded-full shadow-sm">
+                                        <i className="fas fa-check-double mr-1.5"></i> Request Completed
+                                    </span>
                                 </div>
                             )}
                         </div>
                     ) : (
-                         <div className="text-sm text-gray-500 italic bg-gray-50 p-3 rounded text-center">
-                            Pending HAWB submission by requester.
+                         <div className="text-sm text-gray-500 italic bg-gray-50 p-4 rounded text-center border border-gray-100">
+                            Waiting for requester to submit HAWB details.
                         </div>
                     )
                 )}
@@ -220,22 +251,27 @@ const RequestCard: React.FC<Props> = ({ request, currentRole, activeUserName, on
                     <h5 className="font-semibold text-gray-800 mb-2 flex items-center gap-2">
                         <i className="fas fa-history text-gray-400"></i> History Log
                     </h5>
-                    <ul className="space-y-3 pl-2 border-l-2 border-gray-100">
+                    <ul className="space-y-4 pl-2 border-l-2 border-gray-100 ml-1">
                         {request.history.map((event, idx) => (
-                            <li key={idx} className="relative pl-4">
-                                <div className="absolute -left-[21px] top-1 w-3 h-3 rounded-full border-2 border-white bg-gray-300"></div>
+                            <li key={idx} className="relative pl-5">
+                                <div className={`absolute -left-[21px] top-1.5 w-3 h-3 rounded-full border-2 border-white ${
+                                     event.action === 'Rejected' ? 'bg-red-400' :
+                                     event.action === 'Approved' ? 'bg-green-400' : 
+                                     event.action === 'Completed' ? 'bg-gray-600' : 'bg-blue-400'
+                                }`}></div>
                                 <div className="flex flex-col">
-                                    <span className="text-xs text-gray-400">{new Date(event.timestamp).toLocaleString(undefined, {dateStyle:'short', timeStyle:'short'})}</span>
-                                    {/* Display dynamic role name if available, fallback to stored string */}
-                                    <span className="font-medium text-gray-800">
-                                        {roleLabels[event.actor] || event.actor}
-                                    </span>
-                                    <span className={`text-xs ${
+                                    <div className="flex justify-between items-baseline">
+                                        <span className="font-medium text-gray-800">
+                                            {roleLabels[event.actor] || event.actor}
+                                        </span>
+                                        <span className="text-xs text-gray-400">{new Date(event.timestamp).toLocaleString(undefined, {dateStyle:'short', timeStyle:'short'})}</span>
+                                    </div>
+                                    <span className={`text-xs font-semibold ${
                                         event.action === 'Rejected' ? 'text-red-600' :
                                         event.action === 'Approved' ? 'text-green-600' : 
-                                        event.action === 'Completed' ? 'text-gray-700' : 'text-gray-500'
+                                        event.action === 'Completed' ? 'text-gray-700' : 'text-blue-500'
                                     }`}>{event.action}</span>
-                                    {event.note && <span className="text-gray-600 text-xs italic mt-0.5 bg-gray-50 p-2 rounded block border border-gray-100">"{event.note}"</span>}
+                                    {event.note && <span className="text-gray-600 text-xs italic mt-1 bg-gray-50 p-2 rounded block border border-gray-100">"{event.note}"</span>}
                                 </div>
                             </li>
                         ))}
@@ -246,7 +282,7 @@ const RequestCard: React.FC<Props> = ({ request, currentRole, activeUserName, on
 
         {/* Action Section for Approvers */}
         {canAct && (
-          <div className="mt-6 pt-4 border-t border-gray-100">
+          <div className="mt-6 pt-4 border-t border-gray-100 bg-gray-50 -mx-5 -mb-5 p-5">
             <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">
                 Approval/Rejection Justification
             </label>
@@ -254,19 +290,19 @@ const RequestCard: React.FC<Props> = ({ request, currentRole, activeUserName, on
                 value={actionNote}
                 onChange={(e) => setActionNote(e.target.value)}
                 placeholder="Enter a note justifying your decision (Required for rejection, recommended for approval)..."
-                className="w-full text-sm border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none mb-3"
+                className="w-full text-sm border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none mb-3 bg-white"
                 rows={2}
             />
             <div className="flex items-center gap-3">
                 <button
                 onClick={handleApproveClick}
-                className="flex-1 bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-800 shadow-sm transition-colors flex justify-center items-center gap-2"
+                className="flex-1 bg-gray-900 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-800 shadow-sm transition-colors flex justify-center items-center gap-2"
                 >
-                <i className="fas fa-check"></i> Approve
+                <i className="fas fa-check"></i> Approve Request
                 </button>
                 <button
                 onClick={handleRejectClick}
-                className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium transition-colors border border-transparent hover:border-red-100"
+                className="px-4 py-2.5 text-red-600 hover:bg-red-100 rounded-lg text-sm font-medium transition-colors border border-red-200 bg-white"
                 >
                 Reject
                 </button>
