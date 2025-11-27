@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Role, 
@@ -170,6 +172,12 @@ const App: React.FC = () => {
     }
   };
 
+  const handleHawbSubmit = (id: string, hawb: string, remarks: string) => {
+      StorageService.submitHawbDetails(id, hawb, remarks);
+      loadRequests();
+      showToast("HAWB details submitted successfully!");
+  };
+
   const handleReset = () => {
       StorageService.resetData();
       loadRequests();
@@ -204,7 +212,9 @@ const App: React.FC = () => {
         "Created Date",
         "AI Risk Level",
         "AI Risk Score",
-        "AI Summary"
+        "AI Summary",
+        "Submitted HAWBs",
+        "HAWB Remarks"
     ];
 
     const csvRows = requests.map(r => [
@@ -220,7 +230,9 @@ const App: React.FC = () => {
         escapeCsv(new Date(r.createdAt).toLocaleString()),
         escapeCsv(r.aiAnalysis?.riskLevel || "N/A"),
         escapeCsv(r.aiAnalysis?.riskScore || "N/A"),
-        escapeCsv(r.aiAnalysis?.summary || "N/A")
+        escapeCsv(r.aiAnalysis?.summary || "N/A"),
+        escapeCsv(r.hawbSubmission?.hawbNumbers || "Pending"),
+        escapeCsv(r.hawbSubmission?.remarks || "")
     ]);
 
     const csvContent = [
@@ -431,8 +443,10 @@ const App: React.FC = () => {
                                 key={req.id} 
                                 request={req} 
                                 currentRole={activeUser.role}
+                                activeUserName={activeUser.name}
                                 onApprove={handleApprove}
                                 onReject={handleReject}
+                                onSubmitHawb={handleHawbSubmit}
                                 roleLabels={roleLabels}
                             />
                         ))
@@ -450,8 +464,10 @@ const App: React.FC = () => {
                                 <RequestCard 
                                     request={req} 
                                     currentRole={activeUser.role}
+                                    activeUserName={activeUser.name}
                                     onApprove={()=>{}} // Disable actions
                                     onReject={()=>{}}
+                                    onSubmitHawb={handleHawbSubmit}
                                     roleLabels={roleLabels}
                                     />
                                 </div>

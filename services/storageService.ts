@@ -1,5 +1,6 @@
 
-import { SalesRequest, RequestStatus, Role, User, RoleLabels } from "../types";
+
+import { SalesRequest, RequestStatus, Role, User, RoleLabels, HawbSubmission } from "../types";
 
 const STORAGE_KEY = "flowtrack_requests";
 const USERS_KEY = "flowtrack_users";
@@ -77,6 +78,25 @@ export const updateRequestAnalysis = (id: string, analysis: any) => {
     
     requests[index].aiAnalysis = analysis;
     saveRequests(requests);
+};
+
+export const submitHawbDetails = (id: string, hawbNumbers: string, remarks: string) => {
+    const requests = getRequests();
+    const index = requests.findIndex((r) => r.id === id);
+    if (index === -1) return null;
+
+    const submission: HawbSubmission = {
+        hawbNumbers,
+        remarks,
+        submittedAt: new Date().toISOString()
+    };
+
+    requests[index].hawbSubmission = submission;
+    // We don't necessarily need to add to history log, but we can update updatedAt
+    requests[index].updatedAt = new Date().toISOString();
+    
+    saveRequests(requests);
+    return requests[index];
 };
 
 export const fetchRequests = (role: Role): SalesRequest[] => {

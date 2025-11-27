@@ -1,4 +1,5 @@
 
+
 import React, { useState } from 'react';
 import { SalesRequest, Role, RequestStatus, RoleLabels } from '../types';
 import StatusBadge from './StatusBadge';
@@ -6,19 +7,30 @@ import StatusBadge from './StatusBadge';
 interface Props {
   request: SalesRequest;
   currentRole: Role;
+  activeUserName: string;
   onApprove: (id: string, note?: string) => void;
   onReject: (id: string, reason: string) => void;
+  onSubmitHawb: (id: string, hawb: string, remarks: string) => void;
   roleLabels: RoleLabels;
 }
 
-const RequestCard: React.FC<Props> = ({ request, currentRole, onApprove, onReject, roleLabels }) => {
+const RequestCard: React.FC<Props> = ({ request, currentRole, activeUserName, onApprove, onReject, onSubmitHawb, roleLabels }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [actionNote, setActionNote] = useState('');
+  
+  // HAWB State
+  const [hawbNumbers, setHawbNumbers] = useState(request.hawbSubmission?.hawbNumbers || '');
+  const [hawbRemarks, setHawbRemarks] = useState(request.hawbSubmission?.remarks || '');
+  const [isSubmittingHawb, setIsSubmittingHawb] = useState(false);
 
   // Determine if the current user can act on this request
   const canAct =
     (currentRole === Role.APPROVER_L1 && request.status === RequestStatus.PENDING_L1) ||
     (currentRole === Role.APPROVER_L2 && request.status === RequestStatus.PENDING_L2);
+
+  const canSubmitHawb = 
+    request.status === RequestStatus.APPROVED && 
+    request.createdBy === activeUserName;
 
   const handleApproveClick = () => {
     onApprove(request.id, actionNote);
@@ -32,6 +44,16 @@ const RequestCard: React.FC<Props> = ({ request, currentRole, onApprove, onRejec
     } else {
       alert("Please provide a justification for rejection.");
     }
+  };
+
+  const handleHawbSubmitClick = () => {
+      if (!hawbNumbers.trim()) {
+          alert("Please enter at least one HAWB number.");
+          return;
+      }
+      setIsSubmittingHawb(true);
+      onSubmitHawb(request.id, hawbNumbers, hawbRemarks);
+      setIsSubmittingHawb(false);
   };
 
   const getRiskColor = (level?: string) => {
@@ -109,6 +131,73 @@ const RequestCard: React.FC<Props> = ({ request, currentRole, onApprove, onRejec
              <div className="mt-4 h-12 bg-gray-50 rounded-lg animate-pulse flex items-center justify-center text-xs text-gray-400">
                 <i className="fas fa-circle-notch fa-spin mr-2"></i> Analyzing deal data...
              </div>
+        )}
+
+        {/* HAWB Submission Section - Only visible if Approved */}
+        {request.status === RequestStatus.APPROVED && (
+            <div className="mt-5 pt-4 border-t border-dashed border-gray-200">
+                <div className="flex items-center gap-2 mb-3">
+                    <i className="fas fa-shipping-fast text-blue-600"></i>
+                    <h4 className="text-sm font-bold text-gray-800">Post-Approval Fulfillment</h4>
+                </div>
+
+                {canSubmitHawb ? (
+                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                         <div className="mb-3">
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">HAWB Number(s)</label>
+                            <input 
+                                type="text"
+                                className="w-full text-sm border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="Enter HAWB numbers..."
+                                value={hawbNumbers}
+                                onChange={(e) => setHawbNumbers(e.target.value)}
+                            />
+                        </div>
+                        <div className="mb-3">
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Remarks / Notes</label>
+                             <textarea 
+                                className="w-full text-sm border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="Additional details..."
+                                rows={2}
+                                value={hawbRemarks}
+                                onChange={(e) => setHawbRemarks(e.target.value)}
+                            />
+                        </div>
+                        <button 
+                            onClick={handleHawbSubmitClick}
+                            disabled={isSubmittingHawb}
+                            className="w-full bg-blue-600 text-white text-sm font-medium py-2 rounded-md hover:bg-blue-700 transition-colors"
+                        >
+                            {request.hawbSubmission ? 'Update HAWB Details' : 'Submit HAWB'}
+                        </button>
+                    </div>
+                ) : (
+                    request.hawbSubmission ? (
+                        <div className="bg-green-50 p-4 rounded-lg border border-green-100 text-sm">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <span className="block text-xs text-gray-500">HAWB Numbers</span>
+                                    <span className="font-mono font-medium text-gray-800">{request.hawbSubmission.hawbNumbers}</span>
+                                </div>
+                                <div>
+                                    <span className="block text-xs text-gray-500">Submitted At</span>
+                                    <span className="text-gray-800">{new Date(request.hawbSubmission.submittedAt).toLocaleDateString()}</span>
+                                </div>
+                            </div>
+                            {request.hawbSubmission.remarks && (
+                                <div className="mt-2 pt-2 border-t border-green-200">
+                                    <span className="block text-xs text-gray-500">Remarks</span>
+                                    <span className="text-gray-800 italic">{request.hawbSubmission.remarks}</span>
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                         <div className="text-sm text-gray-500 italic bg-gray-50 p-3 rounded text-center">
+                            Pending HAWB submission by requester.
+                        </div>
+                    )
+                )}
+            </div>
         )}
 
         <div className="mt-4">

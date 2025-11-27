@@ -31,6 +31,12 @@ export interface AIAnalysis {
   recommendation: string;
 }
 
+export interface HawbSubmission {
+  hawbNumbers: string;
+  remarks: string;
+  submittedAt: string;
+}
+
 export interface SalesRequest {
   id: string;
   icirs: string;
@@ -47,6 +53,8 @@ export interface SalesRequest {
   createdBy: string; // User name
   aiAnalysis?: AIAnalysis;
   rejectionReason?: string;
+  
+  hawbSubmission?: HawbSubmission;
   
   history: {
     action: string;
