@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Role, 
@@ -339,9 +338,6 @@ const App: React.FC = () => {
         <div className="p-6 border-t border-slate-800 space-y-4">
              <button onClick={handleLogout} className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2">
                 <i className="fas fa-sign-out-alt"></i> Log Out
-            </button>
-            <button onClick={handleReset} className="text-xs text-slate-500 hover:text-red-400 flex items-center gap-2 justify-center w-full">
-                <i className="fas fa-trash"></i> Reset Demo Data
             </button>
         </div>
       </div>
