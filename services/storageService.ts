@@ -1,9 +1,10 @@
 
-import { SalesRequest, RequestStatus, Role, User, RoleLabels, HawbSubmission } from "../types";
+import { SalesRequest, RequestStatus, Role, User, RoleLabels, HawbSubmission, AppNotification } from "../types";
 
 const STORAGE_KEY = "flowtrack_requests";
 const USERS_KEY = "flowtrack_users";
 const ROLES_KEY = "flowtrack_roles";
+const NOTIFICATIONS_KEY = "flowtrack_notifications";
 
 const getRequests = (): SalesRequest[] => {
   const stored = localStorage.getItem(STORAGE_KEY);
@@ -36,6 +37,56 @@ export const createRequest = (request: Omit<SalesRequest, "id" | "createdAt" | "
   return newRequest;
 };
 
+// --- NOTIFICATIONS SYSTEM ---
+
+export const getNotifications = (username: string): AppNotification[] => {
+    const all = JSON.parse(localStorage.getItem(NOTIFICATIONS_KEY) || "[]");
+    return all
+        .filter((n: AppNotification) => n.recipientUsername === username)
+        .sort((a: AppNotification, b: AppNotification) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+};
+
+const saveNotifications = (notifications: AppNotification[]) => {
+    localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(notifications));
+};
+
+export const markNotificationRead = (id: string) => {
+    const all = JSON.parse(localStorage.getItem(NOTIFICATIONS_KEY) || "[]");
+    const index = all.findIndex((n: AppNotification) => n.id === id);
+    if (index !== -1) {
+        all[index].isRead = true;
+        saveNotifications(all);
+    }
+};
+
+export const markAllNotificationsRead = (username: string) => {
+    const all = JSON.parse(localStorage.getItem(NOTIFICATIONS_KEY) || "[]");
+    const updated = all.map((n: AppNotification) => {
+        if (n.recipientUsername === username) {
+            return { ...n, isRead: true };
+        }
+        return n;
+    });
+    saveNotifications(updated);
+};
+
+const createNotification = (recipient: string, message: string, type: 'success' | 'error' | 'info', requestId?: string) => {
+    const all = JSON.parse(localStorage.getItem(NOTIFICATIONS_KEY) || "[]");
+    const newNote: AppNotification = {
+        id: crypto.randomUUID(),
+        recipientUsername: recipient,
+        message,
+        type,
+        timestamp: new Date().toISOString(),
+        isRead: false,
+        requestId
+    };
+    all.unshift(newNote);
+    saveNotifications(all);
+};
+
+// --- REQUEST UPDATES ---
+
 export const updateRequestStatus = (
   id: string, 
   status: RequestStatus, 
@@ -67,6 +118,25 @@ export const updateRequestStatus = (
 
   requests[index] = updatedRequest;
   saveRequests(requests);
+
+  // TRIGGER NOTIFICATIONS
+  // Notify the creator if the request is finally Approved (Accepted by all) or Rejected (by anyone)
+  if (status === RequestStatus.APPROVED) {
+      createNotification(
+          updatedRequest.createdBy, 
+          `Good news! Request ${updatedRequest.icirs} for ${updatedRequest.customerName} has been fully APPROVED.`, 
+          'success', 
+          id
+      );
+  } else if (status === RequestStatus.REJECTED) {
+      createNotification(
+          updatedRequest.createdBy, 
+          `Alert: Request ${updatedRequest.icirs} for ${updatedRequest.customerName} was REJECTED.`, 
+          'error', 
+          id
+      );
+  }
+
   return updatedRequest;
 };
 
@@ -120,6 +190,7 @@ export const fetchRequests = (role: Role): SalesRequest[] => {
 
 export const resetData = () => {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(NOTIFICATIONS_KEY);
     // We don't reset users here to prevent lockout, or we could reset to defaults
 }
 

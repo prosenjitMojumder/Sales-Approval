@@ -74,3 +74,13 @@ export interface DashboardStats {
   pendingValue: number;
   approvedValue: number;
 }
+
+export interface AppNotification {
+  id: string;
+  recipientUsername: string; // Storing the name/username of the user to notify
+  message: string;
+  type: 'success' | 'error' | 'info';
+  timestamp: string;
+  isRead: boolean;
+  requestId?: string;
+}

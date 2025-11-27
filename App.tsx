@@ -1,12 +1,13 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Role, 
   RequestStatus, 
   SalesRequest, 
   DashboardStats,
   User,
-  RoleLabels
+  RoleLabels,
+  AppNotification
 } from './types';
 import * as StorageService from './services/storageService';
 import * as GeminiService from './services/geminiService';
@@ -24,6 +25,11 @@ const App: React.FC = () => {
   const [showNewRequestModal, setShowNewRequestModal] = useState(false);
   const [notification, setNotification] = useState<{message: string, type: 'success' | 'info'} | null>(null);
 
+  // Notification Center State
+  const [userNotifications, setUserNotifications] = useState<AppNotification[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const notificationRef = useRef<HTMLDivElement>(null);
+
   // Form State
   const [formData, setFormData] = useState({
     icirs: '',
@@ -39,8 +45,16 @@ const App: React.FC = () => {
   // Initialize Data
   useEffect(() => {
     refreshMetadata();
-    // Ensure default users exist if first run
     StorageService.getUsers();
+
+    // Close notifications when clicking outside
+    const handleClickOutside = (event: MouseEvent) => {
+        if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+            setShowNotifications(false);
+        }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const refreshMetadata = () => {
@@ -50,7 +64,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (activeUser) {
         loadRequests();
-        // Reset view to dashboard if user loses admin access
+        loadNotifications();
         if (activeUser.role !== Role.ADMIN && view === 'admin') {
             setView('dashboard');
         }
@@ -63,27 +77,35 @@ const App: React.FC = () => {
     setRequests(data);
   };
 
-  // --- DATA SCOPING ---
-  // This is the core logic to ensure Users only see their own requests,
-  // while Approvers/Admins see everything.
+  const loadNotifications = () => {
+    if (!activeUser) return;
+    const data = StorageService.getNotifications(activeUser.name);
+    setUserNotifications(data);
+  };
+
+  // Poll for notifications every 5 seconds
+  useEffect(() => {
+      if (!activeUser) return;
+      const interval = setInterval(() => {
+          loadNotifications();
+          loadRequests(); // Keep requests in sync too
+      }, 5000);
+      return () => clearInterval(interval);
+  }, [activeUser]);
+
+
   const scopedRequests = useMemo(() => {
     if (!activeUser) return [];
-
-    // Salespeople strictly see only their own creations
     if (activeUser.role === Role.SALESPERSON) {
         return requests.filter(r => r.createdBy === activeUser.name);
     }
-
-    // Admins and Approvers (L1/L2/L3) have access to the global pool of requests
     return requests;
   }, [requests, activeUser]);
 
 
-  // Stats calculation - Now uses scopedRequests
   const stats: DashboardStats = useMemo(() => {
     return scopedRequests.reduce((acc, curr) => {
       acc.totalRequests++;
-      // Count APPROVED and COMPLETED as positive outcomes for the dashboard
       if (curr.status === RequestStatus.APPROVED || curr.status === RequestStatus.COMPLETED) {
         acc.approved++;
         acc.approvedValue += curr.requestedPrice;
@@ -111,13 +133,26 @@ const App: React.FC = () => {
 
   const handleLogin = (user: User) => {
       setActiveUser(user);
-      refreshMetadata(); // Ensure roles are fresh on login
+      refreshMetadata();
   };
 
   const handleLogout = () => {
       setActiveUser(null);
       setView('dashboard');
       setRequests([]);
+      setUserNotifications([]);
+  };
+
+  const handleNotificationRead = (id: string) => {
+      StorageService.markNotificationRead(id);
+      loadNotifications();
+  };
+
+  const handleMarkAllRead = () => {
+      if(activeUser) {
+        StorageService.markAllNotificationsRead(activeUser.name);
+        loadNotifications();
+      }
   };
 
   const handleCreateRequest = async (e: React.FormEvent) => {
@@ -146,11 +181,10 @@ const App: React.FC = () => {
     showToast("Request submitted! AI is analyzing...");
     setIsSubmitting(false);
 
-    // Trigger AI Analysis in background
     const analysis = await GeminiService.analyzeDeal(newReq.icirs, newReq.customerName, newReq.territory, newReq.weight, newReq.destination, priceVal);
     if (analysis) {
         StorageService.updateRequestAnalysis(newReq.id, analysis);
-        loadRequests(); // Refresh to show AI data
+        loadRequests(); 
         showToast("AI Risk Assessment completed!", 'info');
     }
   };
@@ -158,17 +192,14 @@ const App: React.FC = () => {
   const handleApprove = (id: string, note?: string) => {
     if (!activeUser) return;
     let nextStatus = RequestStatus.APPROVED;
-    // Find request to get email
     const req = requests.find(r => r.id === id);
     const email = req?.submitterEmail || 'submitter';
 
-    // Get display names
     const l2Label = roleLabels ? roleLabels[Role.APPROVER_L2] : "Level 2";
     const l3Label = roleLabels ? roleLabels[Role.APPROVER_L3] : "Level 3";
 
     let successMsg = `Request finally approved! Automatic email sent to ${email}.`;
 
-    // Routing Logic
     if (activeUser.role === Role.APPROVER_L1) {
         nextStatus = RequestStatus.PENDING_L2;
         successMsg = `Approved! Escalated to ${l2Label}.`;
@@ -176,7 +207,6 @@ const App: React.FC = () => {
         nextStatus = RequestStatus.PENDING_L3;
         successMsg = `Approved! Escalated to ${l3Label}.`;
     }
-    // If L3, nextStatus stays APPROVED
 
     const updated = StorageService.updateRequestStatus(id, nextStatus, activeUser.role, note);
     if (updated) {
@@ -203,16 +233,15 @@ const App: React.FC = () => {
   const handleReset = () => {
       StorageService.resetData();
       loadRequests();
+      loadNotifications();
       showToast("System reset. All data cleared.", 'info');
   };
 
   const handleExport = () => {
-    // Export based on what the user is allowed to see (scopedRequests)
     if (scopedRequests.length === 0) {
         showToast("No data to export", "info");
         return;
     }
-
     const escapeCsv = (text: string | number | undefined) => {
         if (text === undefined || text === null) return '';
         const stringValue = String(text);
@@ -221,48 +250,11 @@ const App: React.FC = () => {
         }
         return stringValue;
     };
-
-    const headers = [
-        "Request ID",
-        "ICIRS",
-        "Customer Name",
-        "Territory",
-        "Weight",
-        "Destination",
-        "Requested Price",
-        "Status",
-        "Submitter Email",
-        "Created Date",
-        "AI Risk Level",
-        "AI Risk Score",
-        "AI Summary",
-        "Submitted HAWBs",
-        "HAWB Remarks"
-    ];
-
+    const headers = ["Request ID", "ICIRS", "Customer Name", "Territory", "Weight", "Destination", "Requested Price", "Status", "Submitter Email", "Created Date", "AI Risk Level", "AI Risk Score", "AI Summary", "Submitted HAWBs", "HAWB Remarks"];
     const csvRows = scopedRequests.map(r => [
-        escapeCsv(r.id),
-        escapeCsv(r.icirs),
-        escapeCsv(r.customerName),
-        escapeCsv(r.territory),
-        escapeCsv(r.weight),
-        escapeCsv(r.destination),
-        escapeCsv(r.requestedPrice),
-        escapeCsv(r.status),
-        escapeCsv(r.submitterEmail),
-        escapeCsv(new Date(r.createdAt).toLocaleString()),
-        escapeCsv(r.aiAnalysis?.riskLevel || "N/A"),
-        escapeCsv(r.aiAnalysis?.riskScore || "N/A"),
-        escapeCsv(r.aiAnalysis?.summary || "N/A"),
-        escapeCsv(r.hawbSubmission?.hawbNumbers || "Pending"),
-        escapeCsv(r.hawbSubmission?.remarks || "")
+        escapeCsv(r.id), escapeCsv(r.icirs), escapeCsv(r.customerName), escapeCsv(r.territory), escapeCsv(r.weight), escapeCsv(r.destination), escapeCsv(r.requestedPrice), escapeCsv(r.status), escapeCsv(r.submitterEmail), escapeCsv(new Date(r.createdAt).toLocaleString()), escapeCsv(r.aiAnalysis?.riskLevel || "N/A"), escapeCsv(r.aiAnalysis?.riskScore || "N/A"), escapeCsv(r.aiAnalysis?.summary || "N/A"), escapeCsv(r.hawbSubmission?.hawbNumbers || "Pending"), escapeCsv(r.hawbSubmission?.remarks || "")
     ]);
-
-    const csvContent = [
-        headers.join(","),
-        ...csvRows.map(row => row.join(","))
-    ].join("\n");
-
+    const csvContent = [headers.join(","), ...csvRows.map(row => row.join(","))].join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -274,52 +266,30 @@ const App: React.FC = () => {
     showToast("Data exported to Excel (CSV) successfully!");
   };
 
-  // Filter scopedRequests for the current view (Main List)
   const visibleRequests = useMemo(() => {
     if (!activeUser) return [];
-    
-    // Admin sees everything (all scoped requests)
     if (activeUser.role === Role.ADMIN) return scopedRequests;
-    
-    // Salesperson sees their own (scopedRequests is already filtered)
     if (activeUser.role === Role.SALESPERSON) return scopedRequests;
-    
-    // Approvers: In the main list, they primarily want to see what is PENDING action from them.
-    if (activeUser.role === Role.APPROVER_L1) {
-        return scopedRequests.filter(r => r.status === RequestStatus.PENDING_L1);
-    }
-    if (activeUser.role === Role.APPROVER_L2) {
-        return scopedRequests.filter(r => r.status === RequestStatus.PENDING_L2);
-    }
-    if (activeUser.role === Role.APPROVER_L3) {
-        return scopedRequests.filter(r => r.status === RequestStatus.PENDING_L3);
-    }
+    if (activeUser.role === Role.APPROVER_L1) return scopedRequests.filter(r => r.status === RequestStatus.PENDING_L1);
+    if (activeUser.role === Role.APPROVER_L2) return scopedRequests.filter(r => r.status === RequestStatus.PENDING_L2);
+    if (activeUser.role === Role.APPROVER_L3) return scopedRequests.filter(r => r.status === RequestStatus.PENDING_L3);
     return [];
   }, [scopedRequests, activeUser]);
 
-  // Approval History / Processed Items for Approvers
   const approvalHistory = useMemo(() => {
     if (!activeUser) return [];
     if (activeUser.role === Role.SALESPERSON) return [];
-    
-    // For approvers, we show items they likely interacted with or are past their stage
     return scopedRequests.filter(r => {
-        // Simple logic: If I am L1, I want to see anything I touched (L2, L3, Approved, Rejected, Completed)
-        // If I am L3, I see final states.
-        
         if (r.status === RequestStatus.DRAFT) return false;
-
         if (activeUser.role === Role.APPROVER_L1) return r.status !== RequestStatus.PENDING_L1;
         if (activeUser.role === Role.APPROVER_L2) return r.status !== RequestStatus.PENDING_L1 && r.status !== RequestStatus.PENDING_L2;
         if (activeUser.role === Role.APPROVER_L3) return r.status === RequestStatus.APPROVED || r.status === RequestStatus.REJECTED || r.status === RequestStatus.COMPLETED;
-        
         return false;
     });
   }, [scopedRequests, activeUser]);
 
-  // --- RENDER ---
+  const unreadCount = userNotifications.filter(n => !n.isRead).length;
 
-  // Show Login Screen if not authenticated
   if (!activeUser || !roleLabels) {
       return <LoginScreen onLogin={handleLogin} />;
   }
@@ -327,7 +297,6 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
       
-      {/* Toast Notification */}
       {notification && (
         <div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg text-white font-medium animate-bounce ${notification.type === 'success' ? 'bg-green-600' : 'bg-blue-600'}`}>
             <i className={`fas ${notification.type === 'success' ? 'fa-check-circle' : 'fa-info-circle'} mr-2`}></i>
@@ -335,7 +304,6 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Sidebar / Navigation */}
       <div className="w-full md:w-64 bg-slate-900 text-white flex-shrink-0 flex flex-col">
         <div className="p-6 border-b border-slate-800">
             <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-400">
@@ -346,7 +314,6 @@ const App: React.FC = () => {
         </div>
         
         <div className="p-6 flex-1">
-            {/* User Profile Summary */}
             <div className="mb-8 flex items-center gap-3 bg-slate-800 p-3 rounded-lg">
                 <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center font-bold text-sm">
                     {activeUser.name.charAt(0)}
@@ -358,31 +325,19 @@ const App: React.FC = () => {
             </div>
 
             <nav className="space-y-2">
-                <div 
-                    onClick={() => setView('dashboard')}
-                    className={`px-4 py-2 rounded-md flex items-center gap-3 cursor-pointer ${view === 'dashboard' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-                >
-                    <i className="fas fa-chart-pie w-5"></i>
-                    <span>Dashboard</span>
+                <div onClick={() => setView('dashboard')} className={`px-4 py-2 rounded-md flex items-center gap-3 cursor-pointer ${view === 'dashboard' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>
+                    <i className="fas fa-chart-pie w-5"></i><span>Dashboard</span>
                 </div>
-                
                 {activeUser.role === Role.ADMIN && (
-                    <div 
-                        onClick={() => setView('admin')}
-                        className={`px-4 py-2 rounded-md flex items-center gap-3 cursor-pointer ${view === 'admin' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-                    >
-                        <i className="fas fa-users-cog w-5"></i>
-                        <span>Admin Panel</span>
+                    <div onClick={() => setView('admin')} className={`px-4 py-2 rounded-md flex items-center gap-3 cursor-pointer ${view === 'admin' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>
+                        <i className="fas fa-users-cog w-5"></i><span>Admin Panel</span>
                     </div>
                 )}
             </nav>
         </div>
         
         <div className="p-6 border-t border-slate-800 space-y-4">
-             <button 
-                onClick={handleLogout} 
-                className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2"
-            >
+             <button onClick={handleLogout} className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2">
                 <i className="fas fa-sign-out-alt"></i> Log Out
             </button>
             <button onClick={handleReset} className="text-xs text-slate-500 hover:text-red-400 flex items-center gap-2 justify-center w-full">
@@ -391,45 +346,98 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="flex-1 p-6 md:p-10 overflow-y-auto">
         <header className="flex justify-between items-center mb-8">
             <div>
                 <h2 className="text-2xl font-bold text-gray-800">
                     {view === 'admin' ? 'Administration' : (activeUser.role === Role.SALESPERSON ? 'My Dashboard' : 'Approval Queue')}
                 </h2>
-                <p className="text-gray-500 text-sm mt-1">
-                    Welcome back, <span className="font-semibold text-gray-700">{activeUser.name}</span>
-                </p>
+                <p className="text-gray-500 text-sm mt-1">Welcome back, <span className="font-semibold text-gray-700">{activeUser.name}</span></p>
             </div>
             
-            {view === 'dashboard' && (
-                <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
+                 {/* Notification Bell */}
+                 <div className="relative" ref={notificationRef}>
                     <button 
-                        onClick={handleExport}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-lg font-medium shadow-sm transition-all flex items-center gap-2 text-sm"
-                        title="Download Data in Excel Format"
+                        onClick={() => setShowNotifications(!showNotifications)}
+                        className="p-2 text-gray-500 hover:text-blue-600 transition-colors relative"
                     >
-                        <i className="fas fa-file-excel"></i> Export to Excel
+                        <i className="fas fa-bell text-xl"></i>
+                        {unreadCount > 0 && (
+                            <span className="absolute top-0 right-0 h-4 w-4 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center border border-white">
+                                {unreadCount}
+                            </span>
+                        )}
                     </button>
 
-                    {activeUser.role === Role.SALESPERSON && (
-                        <button 
-                            onClick={() => setShowNewRequestModal(true)}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium shadow-md transition-all flex items-center gap-2"
-                        >
-                            <i className="fas fa-plus"></i> New Request
-                        </button>
+                    {showNotifications && (
+                        <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-gray-100 z-50 overflow-hidden">
+                            <div className="p-3 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                                <h3 className="text-sm font-bold text-gray-700">Notifications</h3>
+                                {userNotifications.length > 0 && (
+                                    <button onClick={handleMarkAllRead} className="text-xs text-blue-600 hover:underline">
+                                        Mark all read
+                                    </button>
+                                )}
+                            </div>
+                            <div className="max-h-80 overflow-y-auto">
+                                {userNotifications.length === 0 ? (
+                                    <div className="p-6 text-center text-gray-400 text-sm">
+                                        No notifications yet
+                                    </div>
+                                ) : (
+                                    userNotifications.map(note => (
+                                        <div 
+                                            key={note.id} 
+                                            onClick={() => handleNotificationRead(note.id)}
+                                            className={`p-3 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors ${!note.isRead ? 'bg-blue-50/50' : ''}`}
+                                        >
+                                            <div className="flex gap-3">
+                                                <div className={`mt-1 flex-shrink-0 w-2 h-2 rounded-full ${note.type === 'success' ? 'bg-green-500' : note.type === 'error' ? 'bg-red-500' : 'bg-blue-500'}`}></div>
+                                                <div className="flex-1">
+                                                    <p className={`text-sm ${!note.isRead ? 'font-semibold text-gray-800' : 'text-gray-600'}`}>
+                                                        {note.message}
+                                                    </p>
+                                                    <p className="text-xs text-gray-400 mt-1">
+                                                        {new Date(note.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                                        {' · '}
+                                                        {new Date(note.timestamp).toLocaleDateString()}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
                     )}
-                </div>
-            )}
+                 </div>
+
+                {view === 'dashboard' && (
+                    <div className="flex items-center gap-3">
+                        <button 
+                            onClick={handleExport}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-lg font-medium shadow-sm transition-all flex items-center gap-2 text-sm"
+                        >
+                            <i className="fas fa-file-excel"></i> Export
+                        </button>
+                        {activeUser.role === Role.SALESPERSON && (
+                            <button 
+                                onClick={() => setShowNewRequestModal(true)}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium shadow-md transition-all flex items-center gap-2"
+                            >
+                                <i className="fas fa-plus"></i> New Request
+                            </button>
+                        )}
+                    </div>
+                )}
+            </div>
         </header>
 
         {view === 'admin' && activeUser.role === Role.ADMIN ? (
             <AdminPanel onLabelsUpdate={refreshMetadata} />
         ) : (
             <>
-                {/* Salesperson Stats */}
                 {activeUser.role === Role.SALESPERSON && scopedRequests.length > 0 && (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
@@ -494,7 +502,6 @@ const App: React.FC = () => {
                         ))
                     )}
 
-                    {/* Manager History Section */}
                     {(activeUser.role === Role.APPROVER_L1 || activeUser.role === Role.APPROVER_L2 || activeUser.role === Role.APPROVER_L3) && approvalHistory.length > 0 && (
                         <>
                         <h3 className="text-lg font-bold text-gray-700 border-l-4 border-gray-300 pl-3 mt-12 opacity-70">
@@ -507,7 +514,7 @@ const App: React.FC = () => {
                                     request={req} 
                                     currentRole={activeUser.role}
                                     activeUserName={activeUser.name}
-                                    onApprove={()=>{}} // Disable actions
+                                    onApprove={()=>{}}
                                     onReject={()=>{}}
                                     onSubmitHawb={handleHawbSubmit}
                                     roleLabels={roleLabels}
@@ -522,7 +529,6 @@ const App: React.FC = () => {
         )}
       </div>
 
-      {/* New Request Modal */}
       {showNewRequestModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all scale-100">
@@ -537,106 +543,39 @@ const App: React.FC = () => {
                  <div className="grid grid-cols-2 gap-4">
                      <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">ICIRS</label>
-                        <input 
-                            type="text" 
-                            required
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                            placeholder="e.g. IC-2024-001"
-                            value={formData.icirs}
-                            onChange={e => setFormData({...formData, icirs: e.target.value})}
-                        />
+                        <input type="text" required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. IC-2024-001" value={formData.icirs} onChange={e => setFormData({...formData, icirs: e.target.value})} />
                     </div>
                      <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Requested Price ($)</label>
-                        <input 
-                            type="number" 
-                            required
-                            min="0"
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                            placeholder="0.00"
-                            value={formData.requestedPrice}
-                            onChange={e => setFormData({...formData, requestedPrice: e.target.value})}
-                        />
+                        <input type="number" required min="0" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="0.00" value={formData.requestedPrice} onChange={e => setFormData({...formData, requestedPrice: e.target.value})} />
                     </div>
                  </div>
-
                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Customer Name</label>
-                    <input 
-                        type="text" 
-                        required
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                        placeholder="e.g. Global Logistics Inc."
-                        value={formData.customerName}
-                        onChange={e => setFormData({...formData, customerName: e.target.value})}
-                    />
+                    <input type="text" required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. Global Logistics Inc." value={formData.customerName} onChange={e => setFormData({...formData, customerName: e.target.value})} />
                 </div>
-                
                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Territory</label>
-                    <input 
-                        type="text" 
-                        required
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                        placeholder="e.g. North America / East Coast"
-                        value={formData.territory}
-                        onChange={e => setFormData({...formData, territory: e.target.value})}
-                    />
+                    <input type="text" required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. North America / East Coast" value={formData.territory} onChange={e => setFormData({...formData, territory: e.target.value})} />
                 </div>
-
                 <div className="grid grid-cols-2 gap-4">
                      <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Weight</label>
-                        <input 
-                            type="text" 
-                            required
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                            placeholder="e.g. 500kg"
-                            value={formData.weight}
-                            onChange={e => setFormData({...formData, weight: e.target.value})}
-                        />
+                        <input type="text" required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. 500kg" value={formData.weight} onChange={e => setFormData({...formData, weight: e.target.value})} />
                     </div>
                      <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Destination</label>
-                        <input 
-                            type="text" 
-                            required
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                            placeholder="e.g. New York, NY"
-                            value={formData.destination}
-                            onChange={e => setFormData({...formData, destination: e.target.value})}
-                        />
+                        <input type="text" required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. New York, NY" value={formData.destination} onChange={e => setFormData({...formData, destination: e.target.value})} />
                     </div>
                 </div>
-
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Notification Email</label>
-                    <input 
-                        type="email" 
-                        required
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                        placeholder="e.g. sales@example.com"
-                        value={formData.email}
-                        onChange={e => setFormData({...formData, email: e.target.value})}
-                    />
+                    <input type="email" required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. sales@example.com" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
                     <p className="text-xs text-gray-500 mt-1">You will receive an email upon final approval.</p>
                 </div>
-
                 <div className="pt-4 flex gap-3">
-                    <button 
-                        type="button"
-                        onClick={() => setShowNewRequestModal(false)}
-                        className="flex-1 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
-                    >
-                        Cancel
-                    </button>
-                    <button 
-                        type="submit"
-                        disabled={isSubmitting}
-                        className="flex-1 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-70 disabled:cursor-wait"
-                    >
-                        {isSubmitting ? <i className="fas fa-spinner fa-spin"></i> : 'Submit Request'}
-                    </button>
+                    <button type="button" onClick={() => setShowNewRequestModal(false)} className="flex-1 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
+                    <button type="submit" disabled={isSubmitting} className="flex-1 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-70 disabled:cursor-wait">{isSubmitting ? <i className="fas fa-spinner fa-spin"></i> : 'Submit Request'}</button>
                 </div>
             </form>
           </div>
