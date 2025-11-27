@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Role, 
@@ -48,30 +46,6 @@ const App: React.FC = () => {
       setRoleLabels(StorageService.getRoleLabels());
   };
 
-  // Stats calculation
-  const stats: DashboardStats = useMemo(() => {
-    return requests.reduce((acc, curr) => {
-      acc.totalRequests++;
-      if (curr.status === RequestStatus.APPROVED) {
-        acc.approved++;
-        acc.approvedValue += curr.requestedPrice;
-      }
-      if (curr.status === RequestStatus.REJECTED) acc.rejected++;
-      if (curr.status.startsWith('Pending')) acc.pendingValue += curr.requestedPrice;
-      return acc;
-    }, { totalRequests: 0, approved: 0, rejected: 0, pendingValue: 0, approvedValue: 0 });
-  }, [requests]);
-
-  const chartData = useMemo(() => {
-     const data = [
-        { name: 'Approved', value: stats.approved, color: '#10B981' },
-        { name: 'Pending', value: requests.filter(r => r.status.startsWith('Pending')).length, color: '#F59E0B' },
-        { name: 'Rejected', value: stats.rejected, color: '#EF4444' },
-     ];
-     return data.filter(d => d.value > 0);
-  }, [stats, requests]);
-
-
   useEffect(() => {
     if (activeUser) {
         loadRequests();
@@ -87,6 +61,46 @@ const App: React.FC = () => {
     const data = StorageService.fetchRequests(activeUser.role);
     setRequests(data);
   };
+
+  // --- DATA SCOPING ---
+  // This is the core logic to ensure Users only see their own requests,
+  // while Approvers/Admins see everything.
+  const scopedRequests = useMemo(() => {
+    if (!activeUser) return [];
+
+    // Salespeople strictly see only their own creations
+    if (activeUser.role === Role.SALESPERSON) {
+        return requests.filter(r => r.createdBy === activeUser.name);
+    }
+
+    // Admins and Approvers (L1/L2) have access to the global pool of requests
+    return requests;
+  }, [requests, activeUser]);
+
+
+  // Stats calculation - Now uses scopedRequests
+  const stats: DashboardStats = useMemo(() => {
+    return scopedRequests.reduce((acc, curr) => {
+      acc.totalRequests++;
+      if (curr.status === RequestStatus.APPROVED) {
+        acc.approved++;
+        acc.approvedValue += curr.requestedPrice;
+      }
+      if (curr.status === RequestStatus.REJECTED) acc.rejected++;
+      if (curr.status.startsWith('Pending')) acc.pendingValue += curr.requestedPrice;
+      return acc;
+    }, { totalRequests: 0, approved: 0, rejected: 0, pendingValue: 0, approvedValue: 0 });
+  }, [scopedRequests]);
+
+  const chartData = useMemo(() => {
+     const data = [
+        { name: 'Approved', value: stats.approved, color: '#10B981' },
+        { name: 'Pending', value: scopedRequests.filter(r => r.status.startsWith('Pending')).length, color: '#F59E0B' },
+        { name: 'Rejected', value: stats.rejected, color: '#EF4444' },
+     ];
+     return data.filter(d => d.value > 0);
+  }, [stats, scopedRequests]);
+
 
   const showToast = (message: string, type: 'success' | 'info' = 'success') => {
     setNotification({ message, type });
@@ -185,7 +199,8 @@ const App: React.FC = () => {
   };
 
   const handleExport = () => {
-    if (requests.length === 0) {
+    // Export based on what the user is allowed to see (scopedRequests)
+    if (scopedRequests.length === 0) {
         showToast("No data to export", "info");
         return;
     }
@@ -217,7 +232,7 @@ const App: React.FC = () => {
         "HAWB Remarks"
     ];
 
-    const csvRows = requests.map(r => [
+    const csvRows = scopedRequests.map(r => [
         escapeCsv(r.id),
         escapeCsv(r.icirs),
         escapeCsv(r.customerName),
@@ -251,29 +266,38 @@ const App: React.FC = () => {
     showToast("Data exported to Excel (CSV) successfully!");
   };
 
-  // Filter requests for the current view
+  // Filter scopedRequests for the current view (Main List)
   const visibleRequests = useMemo(() => {
     if (!activeUser) return [];
-    if (activeUser.role === Role.ADMIN) return requests; // Admin sees all
-    if (activeUser.role === Role.SALESPERSON) return requests;
+    
+    // Admin sees everything (all scoped requests)
+    if (activeUser.role === Role.ADMIN) return scopedRequests;
+    
+    // Salesperson sees their own (scopedRequests is already filtered)
+    if (activeUser.role === Role.SALESPERSON) return scopedRequests;
+    
+    // Approvers: In the main list, they primarily want to see what is PENDING action from them.
     if (activeUser.role === Role.APPROVER_L1) {
-        return requests.filter(r => r.status === RequestStatus.PENDING_L1);
+        return scopedRequests.filter(r => r.status === RequestStatus.PENDING_L1);
     }
     if (activeUser.role === Role.APPROVER_L2) {
-        return requests.filter(r => r.status === RequestStatus.PENDING_L2);
+        return scopedRequests.filter(r => r.status === RequestStatus.PENDING_L2);
     }
     return [];
-  }, [requests, activeUser]);
+  }, [scopedRequests, activeUser]);
 
+  // Approval History / Processed Items for Approvers
   const approvalHistory = useMemo(() => {
     if (!activeUser) return [];
     if (activeUser.role === Role.SALESPERSON) return [];
-    return requests.filter(r => {
+    
+    // For approvers, we show items they likely interacted with or are past their stage
+    return scopedRequests.filter(r => {
         if (activeUser.role === Role.APPROVER_L1) return r.status !== RequestStatus.PENDING_L1 && r.status !== RequestStatus.DRAFT;
         if (activeUser.role === Role.APPROVER_L2) return r.status === RequestStatus.APPROVED || r.status === RequestStatus.REJECTED;
         return false;
     });
-  }, [requests, activeUser]);
+  }, [scopedRequests, activeUser]);
 
   // --- RENDER ---
 
@@ -388,7 +412,7 @@ const App: React.FC = () => {
         ) : (
             <>
                 {/* Salesperson Stats */}
-                {activeUser.role === Role.SALESPERSON && requests.length > 0 && (
+                {activeUser.role === Role.SALESPERSON && scopedRequests.length > 0 && (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                             <div className="text-gray-500 text-sm font-medium uppercase">Pending Value</div>
